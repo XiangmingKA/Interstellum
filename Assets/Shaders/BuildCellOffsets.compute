@@ -1,0 +1,31 @@
+// BuildCellOffsets.compute
+
+#pragma kernel ClearOffsets
+#pragma kernel BuildOffsets
+
+StructuredBuffer<uint2> sortedHashes;
+RWStructuredBuffer<uint> cellOffsets;
+
+int NumParticles;
+int MaxHash;
+
+[numthreads(256, 1, 1)]
+void ClearOffsets(uint id : SV_DispatchThreadID)
+{
+    if (id < NumParticles + 1)
+        cellOffsets[id] = 0xffffffff;
+}
+
+[numthreads(256, 1, 1)]
+void BuildOffsets(uint id : SV_DispatchThreadID)
+{
+    if (id >= NumParticles) return;
+
+    uint2 current = sortedHashes[id];
+    uint hash = current.x;
+
+    if (id == 0 || sortedHashes[id - 1].x != hash)
+    {
+        cellOffsets[hash] = id;
+    }
+}

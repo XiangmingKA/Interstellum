@@ -1,0 +1,34 @@
+// HashParticles.compute
+
+#pragma kernel HashParticles
+
+struct Particle
+{
+	float3 position;
+	float3 velocity;
+	float life;
+	float distanceToCenter;
+	float mass;
+};
+
+RWStructuredBuffer<Particle> particles;
+RWStructuredBuffer<uint2> hashes;
+
+float cellSize;
+int2 bounds;
+
+uint ComputeHash(int2 cell)
+{
+    cell += 50;
+    return (uint)(cell.y * bounds.x + cell.x);
+}
+
+[numthreads(256, 1, 1)]
+void HashParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    float2 pos = particles[index].position.xy;
+    int2 cell = int2(floor(pos / cellSize));
+    uint hash = ComputeHash(cell);
+    hashes[index] = uint2(hash, index);
+}

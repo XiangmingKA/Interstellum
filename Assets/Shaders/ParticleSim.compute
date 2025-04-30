@@ -1,0 +1,168 @@
+﻿#pragma kernel CSParticle
+
+// Particle data structure
+struct Particle {
+    float3 position;
+    float3 velocity;
+    float life;
+    float temp;
+    float mass;
+};
+
+// Buffers and constants set from the CPU
+RWStructuredBuffer<Particle> particleBuffer;
+StructuredBuffer<uint2> hashes;
+StructuredBuffer<uint> cellOffsets;
+
+float deltaTime;
+float time;
+float neighbourDistance;
+
+float2 galaxyCenter1;
+float2 galaxyCenter2;
+
+uint particlesCount;
+uint maxHash;
+uint rng_state;
+
+float cellSize;
+int2 bounds;
+
+// Hashing function to map 2D cell coordinates into 1D index
+uint ComputeHash(int2 cell) {
+    cell += 50;
+    return (uint)(cell.y * bounds.x + cell.x);
+}
+
+// Xorshift RNG
+uint rand_xorshift() {
+    rng_state ^= (rng_state << 13);
+    rng_state ^= (rng_state >> 17);
+    rng_state ^= (rng_state << 5);
+    return rng_state;
+}
+
+// Respawn a particle in a spiral galaxy arm
+void respawn(uint id, float G, float3 center, float radiusMax) {
+    const float PI = 3.14159265f;
+    const float TWO_PI = 6.2831853f;
+
+    float index = (float)id;
+    float total = (float)particlesCount;
+
+    int numArms = 4;
+    float twist = 0.6f;
+
+    float radius = sqrt(index / total) * radiusMax;
+
+    int armIndex = id % numArms;
+    float anglePerArm = TWO_PI / numArms;
+
+    rng_state = id;
+
+    float offsetAngle = (float(rand_xorshift()) / 4294967296.0f - 0.5f) * 1.0f;
+    float offsetRadius = cos((float(rand_xorshift()) / 4294967296.0f - 0.5f));
+
+    float theta = anglePerArm * armIndex + twist * radius + offsetAngle - time * 0.8;
+
+    float x = (radius + offsetRadius) * cos(theta);
+    float y = (radius + offsetRadius) * sin(theta);
+
+    float3 pos = float3(x, y , 0.0f) + center;
+    particleBuffer[id].position = pos;
+
+    particleBuffer[id].life = 10.0f + (float(rand_xorshift()) / 4294967296.0f - 0.5f) * 5.0f;
+
+    float3 dirToCenter = center - pos;
+    float3 clockwiseDir = cross(dirToCenter, float3(0, 0, 1));
+    float3 tangentDir = -normalize(clockwiseDir);
+
+    float gravityStrength = G * 40.0f;
+    radius = length(dirToCenter);
+    float velocityMag = sqrt(gravityStrength / (radius + 0.01f));
+
+    particleBuffer[id].velocity = tangentDir * velocityMag;
+    particleBuffer[id].mass = 10.0f * (float(rand_xorshift()) / 4294967296.0f - 0.5f);
+}
+
+// Compute gravitational acceleration from a galaxy center
+float3 calculateGravity(float3 particlePos, float3 galaxyPos, float G) {
+    float3 dirToCenter = galaxyPos - particlePos;
+    float distSq = dot(dirToCenter, dirToCenter);
+    float3 gravityForce = float3(0.0, 0.0, 0.0);
+
+    if (distSq > 0.001f) {
+        gravityForce = G * normalize(dirToCenter) / distSq;
+    }
+
+    return gravityForce;
+}
+
+[numthreads(256, 1, 1)]
+void CSParticle(uint3 id : SV_DispatchThreadID) {
+    Particle particle = particleBuffer[id.x];
+    particle.life -= deltaTime * 2.0f;
+
+    float3 position = particle.position;
+    float G = 1.0f;
+
+    float3 gravityForce1 = calculateGravity(position, float3(galaxyCenter1.xy, 0), G);
+    float3 gravityForce2 = calculateGravity(position, float3(galaxyCenter2.xy, 0), G);
+
+    float3 force = float3(0, 0, 0);
+	float localDensity = 0.0f;
+    int2 cell = int2(floor(particle.position.xy / cellSize));
+
+    // Iterate neighboring cells to apply local gravitational interaction
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            int2 neighborCell = cell + int2(dx, dy);
+            uint hash = ComputeHash(neighborCell);
+            uint start = cellOffsets[hash];
+            uint end = min(min(cellOffsets[hash + 1], start + 10), particlesCount - 1);
+
+            for (uint i = start; i < end; i++) {
+                uint neighborIdx = hashes[i].y;
+                if (neighborIdx == id.x) continue;
+
+                Particle q = particleBuffer[neighborIdx];
+                float3 dir = q.position - particle.position;
+                float dist = length(dir);
+
+				if (dist < 100.0f) {
+                    localDensity += 1.0f / (dist * 0.1f + 0.01f); 
+                }
+
+                float invDist = 1.0f / (dist + 0.00001f);
+                float invSqrtDist = invDist * invDist;
+
+                force += (G * q.mass) * dir * invSqrtDist;
+            }
+        }
+    }
+
+    // Update velocity and position
+    particle.velocity += gravityForce1 + gravityForce2 + float3(force.xy, 0) * 0.001f;
+    particle.position += particle.velocity * deltaTime;
+    particle.position.z = 0.0f;
+
+    float disToGalaxy1 = length(position - galaxyCenter1);
+    float disToGalaxy2 = length(position - galaxyCenter2);
+    float minDisToGalaxies = min(disToGalaxy1, disToGalaxy2);
+	float invMinDisToGalaxies = 1.0 / (disToGalaxy1 + 0.001f) + 1.0 / (disToGalaxy2 + 0.001f);
+
+    float tempFromDistance = saturate(invMinDisToGalaxies); 
+    float tempFromDensity = saturate(localDensity * 0.0005f); 
+    float tempFromLife = saturate(particle.life * 0.05f); 
+
+	particle.temp = tempFromDistance * 0.6f + tempFromDensity * 0.2f + tempFromLife * 0.2f;
+    particleBuffer[id.x] = particle;
+
+    // Respawn if dead or out of bounds
+    if (particle.life < 0 || minDisToGalaxies < 0.0001f || minDisToGalaxies > 100) {
+        if (id.x % 3 == 0)
+            respawn(id.x, G, float3(galaxyCenter2.xy, 0), 5.0f);
+        else
+            respawn(id.x, G, float3(galaxyCenter1.xy, 0), 10.0f);
+    }
+}

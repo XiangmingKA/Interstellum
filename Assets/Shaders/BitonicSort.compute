@@ -1,0 +1,33 @@
+// BitonicSort.compute
+
+#pragma kernel BitonicSort
+
+RWStructuredBuffer<uint2> Data;
+
+int NumElements;
+int Stage;
+int PassOfStage;
+
+[numthreads(512, 1, 1)]
+void BitonicSort(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= NumElements) return;
+
+    uint pairDistance = 1 << (PassOfStage - 1);
+    uint j = idx ^ pairDistance;
+
+    if (j > idx && j < NumElements)
+    {
+        uint2 a = Data[idx];
+        uint2 b = Data[j];
+
+        bool ascending = ((idx & (1 << Stage)) == 0);
+
+        if ((a.x > b.x) == ascending)
+        {
+            Data[idx] = b;
+            Data[j] = a;
+        }
+    }
+}
