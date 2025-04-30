@@ -2,7 +2,7 @@
 
 **Interstellum** is a high-performance real-time simulation that visualizes the collision and eventual merging of two galaxies. It uses Unity 6 and GPU-based compute shaders to simulate and render up to **4 million particles**, each representing a star or a stellar object. The system computes gravitational interactions between particles, optimized by **Bitonic Sort** and **Grid Hashing** to support large-scale particle systems at interactive frame rates.
 
-![Interstellum](Image/interstellum.gif)
+![image](https://github.com/XiangmingKA/Interstellum/tree/main/Image/interstellum.gif)
 
 ## Features
 
