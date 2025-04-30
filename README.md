@@ -1,10 +1,8 @@
 # Interstellum: Galactic Collision Simulator
 
-Interstellum is a high-performance real-time simulation that visualizes the collision and eventual merging of two galaxies. It uses Unity 6 and GPU-based compute shaders to simulate and render up to 4 million particles, each representing a star or a stellar object. The system computes gravitational interactions between particles, optimized by Bitonic Sort and Grid Hashing to support large-scale particle systems at interactive frame rates.
+**Interstellum** is a high-performance real-time simulation that visualizes the collision and eventual merging of two galaxies. It uses Unity 6 and GPU-based compute shaders to simulate and render up to **4 million particles**, each representing a star or a stellar object. The system computes gravitational interactions between particles, optimized by **Bitonic Sort** and **Grid Hashing** to support large-scale particle systems at interactive frame rates.
 
-![Interstellum](Interstellum/Image/interstellum.gif)
-
-****
+![Interstellum](Image/interstellum.gif)
 
 ## Features
 
@@ -14,8 +12,6 @@ Interstellum is a high-performance real-time simulation that visualizes the coll
 * Particle color encoding based on density and distance
 * Black hole accretion center simulation
 * Fully implemented in Unity 6
-
-****
 
 ## Core Concepts
 
@@ -47,7 +43,7 @@ particle.velocity += (forceFromGalaxy1 + forceFromGalaxy2) * deltaTime;
 ```
 
 ### Neighborhood Interaction and Optimization
-Why Sorting?
+Why Sorting? 
 Computing all particle-pair gravitational interactions results in O(N²) time complexity, which is infeasible for millions of particles. However, gravitational interactions mostly occur between nearby particles, so we limit calculations to spatial neighbors.
 
 To enable this, we use Grid Hashing:
@@ -61,12 +57,12 @@ uint hash = gridCoord.y * gridResolution + gridCoord.x;
 ```
 
 ### Bitonic Sort
-After hashing, particles must be sorted by cell ID to group neighboring particles together in memory. We use Bitonic Sort, a GPU-parallel sorting algorithm that works efficiently on structured buffers in compute shaders.
+After hashing, particles must be sorted by cell ID to group neighboring particles together in memory. We use **Bitonic Sort**, a GPU-parallel sorting algorithm that works efficiently on structured buffers in compute shaders.
 
 How Bitonic Sort Works (Simplified):
-* Bitonic sort works by building bitonic sequences (where data first increases then decreases), then merging them to form sorted sequences.
+* Bitonic sort works by building **bitonic sequences** (where data first increases then decreases), then merging them to form sorted sequences.
 * The algorithm is ideal for GPU execution because of its predictable data access pattern and regular structure.
-* It has O(log² N) time complexity and performs well on the GPU even for millions of items.
+* It has **O(log² N)** time complexity and performs well on the GPU even for millions of items.
 
 Integration with Particle System:
 * Each frame, the compute shader:
@@ -74,9 +70,7 @@ Integration with Particle System:
     * Sorts particles by cell hash using Bitonic sort.
     * In a subsequent kernel, iterates over each particle and checks only the particles in the same or adjacent cells.
 
-This spatial locality allows us to reduce neighbor search complexity to O(N) (plus constant work per particle).
-
-****
+This spatial locality allows us to reduce neighbor search complexity to **O(N)** (plus constant work per particle).
 
 ## Code Snippets
 ### Assigning Cell Hash in Compute Shader
@@ -102,8 +96,6 @@ for (int j = i - neighborRange; j <= i + neighborRange; j++) {
     }
 }
 ```
-
-****
 
 ## How to Run
 
